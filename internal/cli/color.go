@@ -55,13 +55,13 @@ func Putsf(format string, args ...any) {
 	printMu.Lock()
 	defer printMu.Unlock()
 	if colorEnabled {
-		fmt.Print(fmt.Sprintf(format, args...))
+		fmt.Printf(format, args...)
 		fmt.Print(ansiReset)
 		fmt.Print("\n")
 		fmt.Print(ansiReset)
 		return
 	}
-	fmt.Println(fmt.Sprintf(format, args...))
+	fmt.Printf(format+"\n", args...)
 }
 
 // ResetTail emits the single trailing reset colorama's atexit handler

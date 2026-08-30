@@ -1,0 +1,123 @@
+name: release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            output: sherlock-linux-amd64
+            archive: sherlock-linux-amd64.tar.gz
+          - goos: darwin
+            goarch: amd64
+            output: sherlock-darwin-amd64
+            archive: sherlock-darwin-amd64.tar.gz
+          - goos: darwin
+            goarch: arm64
+            output: sherlock-darwin-arm64
+            archive: sherlock-darwin-arm64.tar.gz
+          - goos: windows
+            goarch: amd64
+            output: sherlock-windows-amd64.exe
+            archive: sherlock-windows-amd64.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go vet ./...
+      - run: go test ./...
+      - name: Build ${{ matrix.output }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: go build -trimpath -ldflags "-s -w" -o ${{ matrix.output }} ./cmd/sherlock
+      - name: Pack
+        run: |
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then
+            zip -9 ${{ matrix.archive }} ${{ matrix.output }}
+          else
+            tar -czf ${{ matrix.archive }} ${{ matrix.output }}
+          fi
+          ls -lh ${{ matrix.archive }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine next tag
+        id: tag
+        run: |
+          set -e
+          LATEST=$(git tag --sort=-v:refname | head -n1 || true)
+          if [ -z "$LATEST" ]; then
+            NEXT="1.0.0"
+            TAG="v$NEXT"
+            echo "No tags found, using $TAG as first release"
+          else
+            echo "Latest tag: $LATEST"
+            VER=${LATEST#v}
+            VER=${VER#V}
+            # compute next version: increment last component with base-10 carry
+            # 1.0.0 -> 1.0.1, 1.0.9 -> 1.1.0, 1.9 -> 2.0.0, 9.9.9 -> 10.0.0
+            IFS='.' read -ra PARTS <<< "$VER"
+            if [ ${#PARTS[@]} -eq 0 ] || [ -z "$VER" ]; then
+              PARTS=(1 0 0)
+              NEXT="1.0.1"
+            else
+              LAST=$((${#PARTS[@]}-1))
+              PARTS[$LAST]=$((${PARTS[$LAST]}+1))
+              for ((i=${#PARTS[@]}-1; i>0; i--)); do
+                if [ ${PARTS[i]} -gt 9 ]; then
+                  PARTS[i]=0
+                  PARTS[i-1]=$((${PARTS[i-1]}+1))
+                else
+                  break
+                fi
+              done
+              while [ ${#PARTS[@]} -lt 3 ]; do PARTS+=(0); done
+              IFS='.'; NEXT="${PARTS[*]}"; unset IFS
+            fi
+            TAG="v$NEXT"
+          fi
+          # avoid collision if tag already exists (rerun)
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, aborting"
+            exit 1
+          fi
+          echo "Next tag: $TAG"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$NEXT" >> $GITHUB_OUTPUT
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -e
+          echo "Creating tag $TAG"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "Creating release $TAG"
+          gh release create "$TAG" --title "$TAG" --generate-notes dist/*
+          ls -lh dist/
