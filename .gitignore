@@ -1,4 +1,6 @@
 reference/
 *.DS_Store
-sherlock
-sherlock-go
+/sherlock
+/sherlock.exe
+/sherlock-go
+/sherlock-go.exe
