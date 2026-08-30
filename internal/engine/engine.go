@@ -349,21 +349,15 @@ func Run(username string, sites []*site.SiteInfo, queryNotify *report.Notifier, 
 					Context:     res.errContext,
 				}
 			}
+			// Stream result immediately as it completes.
+			if opts.DumpResponse {
+				dumpResponse(res, username)
+			}
+			queryNotify.Update(res.Query)
 		}(res, si, method, probeURL, payload, headers, followRedirects, malformed)
 	}
 
-	// Second pass: report in manifest order (upstream blocks on each future
-	// sequentially), so output ordering is deterministic.
 	wg.Wait()
-	for _, res := range results {
-		if res.Query == nil || res.Query.Status == report.StatusIllegal {
-			continue // already reported during dispatch
-		}
-		if opts.DumpResponse {
-			dumpResponse(res, username)
-		}
-		queryNotify.Update(res.Query)
-	}
 	return results, nil
 }
 

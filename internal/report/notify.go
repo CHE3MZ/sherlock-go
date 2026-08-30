@@ -2,6 +2,7 @@ package report
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/CHE3MZ/sherlock-go/internal/cli"
 )
@@ -14,6 +15,7 @@ type Notifier struct {
 	// BrowseFn is invoked with each claimed URL when non-nil
 	// (--browse); inject cli.OpenBrowser from main.
 	BrowseFn func(url string)
+	mu       sync.Mutex
 	found    int
 }
 
@@ -23,6 +25,8 @@ type Notifier struct {
 // is: payload, reset, newline, reset (hexdump-verified against colorama).
 // With colors disabled both resets vanish, matching colorama strip mode.
 func printStyled(line string) {
+	cli.LockPrint()
+	defer cli.UnlockPrint()
 	fmt.Print(line)
 	fmt.Print(cli.Reset())
 	fmt.Print("\n")
@@ -31,6 +35,8 @@ func printStyled(line string) {
 
 // Start prints the title line for a username scan.
 func (n *Notifier) Start(username string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	printStyled(
 		cli.Bright() + cli.Green() + "[" +
 			cli.Yellow() + "*" +
@@ -39,14 +45,19 @@ func (n *Notifier) Start(username string) {
 			cli.Green() + " on:")
 	// Upstream prints '\r' here: write("\r") + write("\n"), each followed
 	// by colorama's autoreset.
+	cli.LockPrint()
 	fmt.Print("\r")
 	fmt.Print(cli.Reset())
 	fmt.Print("\n")
 	fmt.Print(cli.Reset())
+	cli.UnlockPrint()
 }
 
 // Update prints one result, styled per its status.
+// It is safe for concurrent use; each call is serialized.
 func (n *Notifier) Update(result *QueryResult) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	responseTimeText := ""
 	if result.HasTime && n.Verbose {
 		responseTimeText = fmt.Sprintf(" [%dms]", int(result.QueryTime*1000+0.5))
@@ -103,6 +114,8 @@ func (n *Notifier) Update(result *QueryResult) {
 
 // Finish prints the summary footer.
 func (n *Notifier) Finish() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	printStyled(cli.Bright() + cli.Green() + "[" +
 		cli.Yellow() + "*" +
 		cli.Green() + "] Search completed with" +

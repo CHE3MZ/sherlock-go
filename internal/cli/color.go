@@ -5,6 +5,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"sync"
 )
 
 // ANSI codes mirroring the colorama sequences used upstream.
@@ -17,7 +18,10 @@ const (
 	ansiWhite  = "\x1b[37m"
 )
 
-var colorEnabled = true
+var (
+	colorEnabled = true
+	printMu      sync.Mutex
+)
 
 // InitColors decides whether ANSI colors are emitted, honoring --no-color
 // plus NO_COLOR / TERM=dumb / non-TTY conventions.
@@ -40,10 +44,16 @@ func Reset() string  { return paint(ansiReset) }
 // modes deterministically.
 func SetColorEnabled(v bool) { colorEnabled = v }
 
+// LockPrint/UnlockPrint expose the print mutex for multi-print atomic blocks.
+func LockPrint()   { printMu.Lock() }
+func UnlockPrint() { printMu.Unlock() }
+
 // Putsf mirrors a Python print() issued through colorama with
 // init(autoreset=True) on a tty: payload + reset + newline + reset.
 // With colors disabled (strip mode or pre-init) it degrades to a plain line.
 func Putsf(format string, args ...any) {
+	printMu.Lock()
+	defer printMu.Unlock()
 	if colorEnabled {
 		fmt.Print(fmt.Sprintf(format, args...))
 		fmt.Print(ansiReset)
@@ -66,6 +76,8 @@ func ResetTail() {
 // print issues a single write of just the newline, so it gains only ONE
 // reset suffix (unlike print(x), which also suffixes the payload write).
 func BlankLine() {
+	printMu.Lock()
+	defer printMu.Unlock()
 	if colorEnabled {
 		fmt.Print("\n")
 		fmt.Print(ansiReset)
