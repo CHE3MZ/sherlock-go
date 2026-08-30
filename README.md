@@ -1,4 +1,4 @@
-![alt text](docs/sherlock-logo.png)
+![alt text](docs/images/sherlock-logo.png)
 
 # Sherlock GO
 
@@ -8,7 +8,7 @@ Same thing as the original, just as a single binary with no Python needed. Resul
 
 This is an independent project by [CHE3MZ](https://github.com/CHE3MZ) and not affiliated with the Sherlock Project. Site data comes from upstream.
 
-![alt text](docs/demo.png)
+![alt text](docs/images/demo.png)
 
 ## Install
 
@@ -26,6 +26,8 @@ go build -o sherlock ./cmd/sherlock
 Needs Go 1.21+.
 
 ## Usage
+
+#### Full reference in [docs](docs/)
 
 ```sh
 ./sherlock john
