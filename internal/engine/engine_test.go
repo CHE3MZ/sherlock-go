@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -403,13 +404,12 @@ func TestTranslatedRegexSemantics(t *testing.T) {
 func TestResultsReportedInManifestOrder(t *testing.T) {
 	mux := http.NewServeMux()
 	release := make(chan struct{})
-	first := true
+	var once sync.Once
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if first {
-			first = false
+		once.Do(func() {
 			close(release)
 			time.Sleep(150 * time.Millisecond) // first site is slowest
-		}
+		})
 		<-release // second site waits until first has been requested
 		w.WriteHeader(http.StatusOK)
 	})
