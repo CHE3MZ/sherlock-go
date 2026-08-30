@@ -18,7 +18,7 @@ func enableVirtualTerminal() {
 
 	h := syscall.Handle(os.Stdout.Fd())
 	var mode uint32
-	r, _, err := getConsoleMode.Call(uintptr(h), uintptr(unsafe.Pointer(&mode)))
+	r, _, _ := getConsoleMode.Call(uintptr(h), uintptr(unsafe.Pointer(&mode)))
 	if r == 0 {
 		return
 	}
