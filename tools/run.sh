@@ -1,1 +1,1 @@
-go run ./cmd/sherlock-go
+go run ./cmd/sherlock

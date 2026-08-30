@@ -1,1 +1,1 @@
-go build -o sherlock ./cmd/sherlock-go
+go build -o sherlock ./cmd/sherlock
