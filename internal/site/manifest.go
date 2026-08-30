@@ -164,7 +164,7 @@ func ApplyExclusions(sites []*SiteInfo, doNotExclude []string) []*SiteInfo {
 	}
 
 	excluded := map[string]bool{}
-	for _, line := range strings.Split(string(body), "\n") {
+	for line := range strings.SplitSeq(string(body), "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" {
 			excluded[line] = true

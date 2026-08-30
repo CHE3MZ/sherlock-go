@@ -14,6 +14,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -302,11 +303,9 @@ func Run(username string, sites []*site.SiteInfo, queryNotify *report.Notifier, 
 		malformed := pageURL == "" || probeURL == ""
 
 		// For response_url detection we must capture the pre-redirect status.
-		followRedirects := raw["errorType"] != "response_url"
+		followRedirects := !slices.Contains(toStringList(raw["errorType"]), "response_url")
 
-		wg.Add(1)
-		go func(res *Result, info *site.SiteInfo, method, probeURL string, payload any, headers map[string]string, follow, malformed bool) {
-			defer wg.Done()
+		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
@@ -322,7 +321,7 @@ func Run(username string, sites []*site.SiteInfo, queryNotify *report.Notifier, 
 					break
 				}
 				client := base
-				if !follow {
+				if !followRedirects {
 					client = noRedirectClient
 				}
 				resp, doErr := client.Do(req)
@@ -335,7 +334,7 @@ func Run(username string, sites []*site.SiteInfo, queryNotify *report.Notifier, 
 				_ = resp.Body.Close()
 				res.HTTPStatus = strconv.Itoa(resp.StatusCode)
 				res.ResponseText = respBody
-				res.Query = classify(info, username, res.URLUser, resp.StatusCode, string(respBody), elapsed.Seconds())
+				res.Query = classify(si, username, res.URLUser, resp.StatusCode, string(respBody), elapsed.Seconds())
 			}
 
 			if res.errContext != "" {
@@ -343,7 +342,7 @@ func Run(username string, sites []*site.SiteInfo, queryNotify *report.Notifier, 
 				res.ResponseText = nil
 				res.Query = &report.QueryResult{
 					Username:    username,
-					SiteName:    info.Name,
+					SiteName:    si.Name,
 					SiteURLUser: res.URLUser,
 					Status:      report.StatusUnknown,
 					Context:     res.errContext,
@@ -354,7 +353,7 @@ func Run(username string, sites []*site.SiteInfo, queryNotify *report.Notifier, 
 				dumpResponse(res, username)
 			}
 			queryNotify.Update(res.Query)
-		}(res, si, method, probeURL, payload, headers, followRedirects, malformed)
+		})
 	}
 
 	wg.Wait()
@@ -385,12 +384,10 @@ func newRequest(method, rawURL string, payload any, headers map[string]string) (
 
 func classifyNetError(err error, proxy string) (context, text string) {
 	text = err.Error()
-	var ne net.Error
-	if errors.As(err, &ne) && ne.Timeout() {
+	if ne, ok := errors.AsType[net.Error](err); ok && ne.Timeout() {
 		return "Timeout Error", text
 	}
-	var ue *url.Error
-	if errors.As(err, &ue) {
+	if ue, ok := errors.AsType[*url.Error](err); ok {
 		if strings.Contains(ue.Err.Error(), "unsupported protocol scheme") ||
 			strings.Contains(ue.Err.Error(), "invalid control character") {
 			return "Unknown Error", text
@@ -431,7 +428,7 @@ func classify(si *site.SiteInfo, username, pageURL string, statusCode int, bodyT
 
 	status := report.StatusUnknown
 
-	if containsStr(errorTypes, "message") {
+	if slices.Contains(errorTypes, "message") {
 		// errorFlag true means no error text found in the HTML.
 		errorFlag := true
 		switch msgs := si.Raw["errorMsg"].(type) {
@@ -454,17 +451,17 @@ func classify(si *site.SiteInfo, username, pageURL string, statusCode int, bodyT
 		}
 	}
 
-	if containsStr(errorTypes, "status_code") && status != report.StatusAvailable {
+	if slices.Contains(errorTypes, "status_code") && status != report.StatusAvailable {
 		status = report.StatusClaimed
 		codes := toIntList(si.Raw["errorCode"])
-		if codes != nil && intIn(codes, statusCode) {
+		if codes != nil && slices.Contains(codes, statusCode) {
 			status = report.StatusAvailable
 		} else if statusCode >= 300 || statusCode < 200 {
 			status = report.StatusAvailable
 		}
 	}
 
-	if containsStr(errorTypes, "response_url") && status != report.StatusAvailable {
+	if slices.Contains(errorTypes, "response_url") && status != report.StatusAvailable {
 		// Redirects were disabled, so the response code reflects the
 		// original request.
 		if statusCode >= 200 && statusCode < 300 {
@@ -500,22 +497,4 @@ func dumpResponse(res *Result, username string) {
 	cli.Putsf("<<<<< END RESPONSE TEXT")
 	cli.Putsf("VERDICT       : %s", res.Query.Status.String())
 	cli.Putsf("+++++++++++++++++++++")
-}
-
-func containsStr(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
-func intIn(list []int, v int) bool {
-	for _, x := range list {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }

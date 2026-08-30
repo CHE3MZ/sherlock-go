@@ -50,7 +50,7 @@ func ReorderArgs(args []string) []string {
 			}
 		}
 
-		if strings.IndexByte(name, '=') >= 0 {
+		if strings.Contains(name, "=") {
 			flags = append(flags, arg)
 			continue
 		}
